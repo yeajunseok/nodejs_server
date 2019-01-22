@@ -2,36 +2,9 @@ var http = require('http');
 var fs = require('fs');
 var url = require('url');
 var qs = require('querystring');
-
-var template = { //요것이 객체임
-  html: function (title,list,body, control) {
-    return `
-    <!doctype html>
-    <html>
-    <head>
-      <title>WEB1 - ${title}</title>
-      <meta charset="utf-8">
-    </head>
-    <body>
-      <h1><a href="/">WEB</a></h1>
-      ${list}
-      ${control}
-      ${body}
-    </body>
-    </html>
-    `;
-  },
-  list: function (filelist) {
-    var list = '<ul>';
-    var i = 0;
-    while (i<filelist.length) {
-      list = list + `<li><a href="/?id=${filelist[i]}">${filelist[i]}</a></li>`;
-      i = i + 1;
-    }
-    list = list+'</ul>';
-    return list;
-  }
-}
+var template = require('./lib/template.js'); // 모듈을 갖고 올 떄는 requiret사용한다.
+var path = require('path');
+var sanitizeHtml = require('sanitize-html'); //node_modules이 모듈에서 sanitize-html를 찾는다.
 
 var app = http.createServer(function(request,response){ //request에는 웹브라우저가 보낸 정보들, response 응답할떄 우리가 웹 브라우저에게 보낼 정보들
     var _url = request.url;
@@ -50,14 +23,17 @@ var app = http.createServer(function(request,response){ //request에는 웹브�
         })
       } else {
         fs.readdir('./data', function(error, filelist) {
-          fs.readFile(`data/${queryData.id}`, 'utf8', function(err, de){ //data/${queryData.id}를 읽어서, 내용을 functiond의 de에 놔둔다. console.log(de); 하면 de 내용이 찍힌다.
+          var filteredId = path.parse(queryData.id).base; //입력정보에 대한 보안
+          fs.readFile(`data/${filteredId}`, 'utf8', function(err, de){ //data/${queryData.id}를 읽어서, 내용을 functiond의 de에 놔둔다. console.log(de); 하면 de 내용이 찍힌다.
             var title = queryData.id;
+            var sanitizedTitle = sanitizeHtml(title); //이렇게 함으로써 소독해준다.
+            var sanitizeDescription = sanitizeHtml(de); //본문에 스크립트 태그가 같이 따라오면 살슌 해줌
             var list = template.list(filelist);
-            var html = template.html(title,list,`<h2>${title}</h2>${de}`,
+            var html = template.html(sanitizedTitle,list,`<h2>${sanitizedTitle}</h2>${sanitizeDescription}`,
               `<a href="/create">create</a>
-               <a href="/update?id=${title}">update</a>
+               <a href="/update?id=${sanitizedTitle}">update</a>
                <form action="delete_process" method="post" >
-                <input type="hidden" name="id" value="${title}">
+                <input type="hidden" name="id" value="${sanitizedTitle}">
                 <input type="submit" value="delete">
               </form>
               `
@@ -107,7 +83,8 @@ var app = http.createServer(function(request,response){ //request에는 웹브�
       });
     } else if (pathname === '/update') {
       fs.readdir('./data', function(error, filelist) {
-        fs.readFile(`data/${queryData.id}`, 'utf8', function(err, de){ //data/${queryData.id}를 읽어서, 내용을 functiond의 de에 놔둔다. console.log(de); 하면 de 내용이 찍힌다.
+        var filteredId = path.parse(queryData.id).base;
+        fs.readFile(`data/${filteredId}`, 'utf8', function(err, de){ //data/${queryData.id}를 읽어서, 내용을 functiond의 de에 놔둔다. console.log(de); 하면 de 내용이 찍힌다.
           var title = queryData.id;
           var list = template.list(filelist);
           var html = template.html(title,list,
@@ -152,7 +129,8 @@ var app = http.createServer(function(request,response){ //request에는 웹브�
       request.on('end', function() {
         var post = qs.parse(body);
         var id = post.id;
-        fs.unlink(`data/${id}`, function(err) {
+        var filteredId = path.parse(id).base;
+        fs.unlink(`data/${filteredId}`, function(err) {
           response.writeHead(302, {Location: `/`}); //리다이렉션, 사용자가 create_process에서 다른 페이지로 팅겨저 버리는거... 302는 페이지를 다른 쪽으로 리다이렉션 하는것.
           response.end();
         })
